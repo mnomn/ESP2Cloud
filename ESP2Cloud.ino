@@ -59,7 +59,7 @@ int ledPin = 2; // on Wemos D4,  GPIO2
   sleep
 */
 
-#define E2C_ADC_MODE E2C_ADC_MODE_A0
+#define E2C_ADC_MODE E2C_ADC_MODE_BATTERY
 #define E2C_TH_MODE E2C_TH_MODE_I2C
 
 #if E2C_ADC_MODE == E2C_ADC_MODE_BATTERY
@@ -67,7 +67,7 @@ int ledPin = 2; // on Wemos D4,  GPIO2
 #endif
 
 /////// DTH devices //////////////
-#ifdef E2C_TH_MODE == E2C_TH_MODE_DTH
+#if E2C_TH_MODE == E2C_TH_MODE_DTH
 #include <DHT.h>
 //#define DHTTYPE DHT11   // DHT 11
 //#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
@@ -77,12 +77,12 @@ int ledPin = 2; // on Wemos D4,  GPIO2
 #define E2C_POWER_PIN 5   /* D1 on WeMos */
 #endif
 
-#ifdef E2C_TH_MODE == E2C_TH_MODE_I2C
+#if E2C_TH_MODE == E2C_TH_MODE_I2C
 #include <AM2320.h>
 #include <Wire.h>
 AM2320 th;
 #define E2C_POWER_PIN 14 /* D5 on WeMos */
-#define E2C_GND_PIN 12
+// #define E2C_GND_PIN 12
 // Pins on sensor: VCC, SDA, GND, SCL
 // Pins on ESP8266: SDA GPIO4 D2 on wemos
 //                  SCL GPIO5 D1 on wemos
@@ -120,10 +120,20 @@ void setup()
   espx.SleepCheck();
   yield();
 
+#if E2C_TH_MODE == E2C_TH_MODE_I2C
+  // Set SDA and SCL HIGH, so no external pull-ups are needed
+  pinMode(SDA, INPUT_PULLUP);
+  pinMode(SCL, INPUT_PULLUP);
+#endif
+
+#ifdef E2C_POWER_PIN
   pinMode(E2C_POWER_PIN, OUTPUT);
-  pinMode(E2C_GND_PIN, OUTPUT);
   digitalWrite(E2C_POWER_PIN, HIGH);
+#endif
+#ifdef E2C_GND_PIN
+  pinMode(E2C_GND_PIN, OUTPUT);
   digitalWrite(E2C_GND_PIN, LOW);
+#endif
   yield();
   Serial.print("Power pin ");
   Serial.println(E2C_POWER_PIN);
@@ -141,7 +151,7 @@ void setup()
 #endif
 
   // espWebConfig is configuring the button as input
-  espConfig.setHelpText("Set URL and (optional) header, for example <br>"
+  espConfig.setHelpText((char*) "Set URL and (optional) header, for example <br>"
                         "URL=<b>http://things.ubidots.com/api/v1.6/devices/{LABEL_DEVICE}/</b> <br>"
                         "Header=<b>X-Auth-Token: xxxx</b>");
   if (espConfig.setup(server))
@@ -163,12 +173,14 @@ void loop()
 {
   server.handleClient();
   int press = espx.ButtonPressed(resetPin);
+  // Long press: Reset config
   if (press == 2 && state != E2C_STATE_RESET_CONFIG) {
     espConfig.clearConfig();
     state = E2C_STATE_RESET_CONFIG;
     Serial.println(F("E2C_STATE_RESET_CONFIG"));
   }
-  if (press == 1 && state != E2C_STATE_OTA) {
+  // Short press: OTA
+  if (press == 1 && state != E2C_STATE_OTA  && state != E2C_STATE_RESET_CONFIG) {
     Serial.println("Begin OTA");
     ArduinoOTA.begin();
     pinMode(ledPin, OUTPUT);
@@ -241,12 +253,12 @@ void loop()
 
 } // loop
 
-uint16_t measureAnalog()
+void measureAnalog()
 {
   #if E2C_ADC_MODE == E2C_ADC_MODE_BATTERY
     vcc = ESP.getVcc();
     Serial.print(" Battery ");
-  #else if E2C_ADC_MODE == E2C_ADC_MODE_A0
+  #elif E2C_ADC_MODE == E2C_ADC_MODE_A0
     vcc = analogRead(A0);
     Serial.print(" Analog: ");
   #endif
